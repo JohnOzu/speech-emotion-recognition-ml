@@ -5,7 +5,7 @@ def identify_emotion(emotion):
     emotion = emotion.strip().lower()  
 
     match emotion:
-        case "ang" | "05" | "a" | "angry":
+        case "ang" | "05" | "a" | "angry" | "anger":
             return "angry"
         case "dis" | "07" | "d" | "disgust":
             return "disgust"
