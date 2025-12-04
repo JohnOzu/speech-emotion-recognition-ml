@@ -1,7 +1,14 @@
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
 
-models/checkpoints
-models/final
+# Model directories
+models/
+models/*
 
-data
+# Python cache
+__pycache__/
+*.pyc
+utils/__pycache__/*.pyc
+
+# Data folder
+data/
