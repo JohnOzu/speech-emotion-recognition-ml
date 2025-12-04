@@ -25,6 +25,30 @@ def extract_mfcc_features(y, sr, n_mfcc=40, hop_length=512, n_fft=1024):
 
     return all_mfccs
 
+def extract_mel_spectrogram(y, sr, n_mels=128, hop_length=512, n_fft=2048, fmin=0, fmax=None):
+    
+    # Mel-spectrogram is a time-frequency representation that mimics 
+    # human auditory perception. Better than MFCC for capturing 
+    # emotional nuances in voice quality.
+    
+    # Extract mel-spectrogram (power spectrogram)
+    mel_spec = librosa.feature.melspectrogram(
+        y=y,
+        sr=sr,
+        n_mels=n_mels,
+        hop_length=hop_length,
+        n_fft=n_fft,
+        fmin=fmin,
+        fmax=fmax,
+        power=2.0  # Power spectrum (magnitude squared)
+    )
+    
+    # Convert to log scale (dB)
+    # Human perception of loudness is logarithmic
+    log_mel_spec = librosa.power_to_db(mel_spec, ref=np.max)
+    
+    return log_mel_spec  # Shape: (n_mels, time_frames)
+
 def extract_prosodic_features(y, sr, target_frames=None):
     # Extract pitch and energy - helps distinguish fear/happy/sad
 
@@ -40,45 +64,48 @@ def extract_prosodic_features(y, sr, target_frames=None):
     # Energy (RMS) 
     rms = librosa.feature.rms(y=y, hop_length=512)[0]  # Shape: (time_frames,)
     
-    # Zero Crossing Rate
-    zcr = librosa.feature.zero_crossing_rate(y, hop_length=512)[0]
-    
-    # Spectral Centroid
-    spectral_centroid = librosa.feature.spectral_centroid(y=y, sr=sr, hop_length=512)[0]
-    
-    # Spectral Rolloff 
-    spectral_rolloff = librosa.feature.spectral_rolloff(y=y, sr=sr, hop_length=512)[0]
-    
     # Ensure all have same length
-    min_len = min(len(f0), len(rms), len(zcr), len(spectral_centroid), len(spectral_rolloff))
-
+    min_len = min(len(f0), len(rms))
     f0 = f0[:min_len]
     rms = rms[:min_len]
-    zcr = zcr[:min_len]
-    spectral_centroid = spectral_centroid[:min_len]
-    spectral_rolloff = spectral_rolloff[:min_len]
 
     prosodic_features = np.vstack([
         f0,
         rms,
-        zcr,
-        spectral_centroid,
-        spectral_rolloff
     ])
-
-    if target_frames is not None and prosodic_features.shape[1] != target_frames:
-        from scipy import interpolate
-        x_old = np.linspace(0, 1, prosodic_features.shape[1])
-        x_new = np.linspace(0, 1, target_frames)
-        
-        prosodic_resampled = np.zeros((prosodic_features.shape[0], target_frames))
-        for i in range(prosodic_features.shape[0]):
-            f = interpolate.interp1d(x_old, prosodic_features[i, :], kind='linear')
-            prosodic_resampled[i, :] = f(x_new)
-        
-        prosodic_features = prosodic_resampled
     
     return prosodic_features
+
+def extract_spectral_features(y, sr, hop_length=512):
+
+    # Spectral features - frequency domain characteristics.
+
+    # Spectral Centroid - "brightness"
+    centroid = librosa.feature.spectral_centroid(y=y, sr=sr, hop_length=hop_length)[0]
+    
+    # Spectral Rolloff - high-frequency content
+    rolloff = librosa.feature.spectral_rolloff(y=y, sr=sr, hop_length=hop_length)[0]
+    
+    # Spectral Contrast - harmonic structure
+    contrast = librosa.feature.spectral_contrast(y=y, sr=sr, hop_length=hop_length, n_bands=6)
+    
+    # Spectral Bandwidth - frequency spread
+    bandwidth = librosa.feature.spectral_bandwidth(y=y, sr=sr, hop_length=hop_length)[0]
+    
+    # Spectral Flatness - noise-like vs tonal
+    flatness = librosa.feature.spectral_flatness(y=y, hop_length=hop_length)[0]
+    
+    # Align lengths
+    min_len = min(len(centroid), len(rolloff), contrast.shape[1], 
+                  len(bandwidth), len(flatness))
+    
+    return np.vstack([
+        centroid[:min_len],
+        rolloff[:min_len],
+        contrast[:, :min_len],
+        bandwidth[:min_len],
+        flatness[:min_len]
+    ])  # Shape: (12, time_frames)
 
 def augment_audio(file_path, sr):
     # Apply multiple augmentations to one audio sample
@@ -101,18 +128,54 @@ def augment_audio(file_path, sr):
     # Add noise
     noise = np.random.randn(len(audio)) * 0.005
     audio_noise = audio + noise
-    augmented_samples.append((audio_pitch, "noise_0.005"))
+    augmented_samples.append((audio_noise, "noise_0.005"))
+
+    # Audio Scaling
+    augmented_samples.append((audio * 1.2, "volume_1.2"))
     
     return augmented_samples
+
+def compute_feature_statistics(features):
+    
+    # Args:
+        # features: 2D array of shape (n_features, time_frames)
+    
+    # Returns:
+        # 1D array of statistical features
+    
+    stats = []
+    a
+    # Compute statistics across time (axis=1)
+    stats.append(np.mean(features, axis=1))      # Mean
+    stats.append(np.std(features, axis=1))       # Standard deviation
+    stats.append(np.max(features, axis=1))       # Maximum
+    stats.append(np.min(features, axis=1))       # Minimum
+    stats.append(np.median(features, axis=1))    # Median
+    
+    # Optional: Add percentiles
+    stats.append(np.percentile(features, 25, axis=1))  # 25th percentile
+    stats.append(np.percentile(features, 75, axis=1))  # 75th percentile
+    
+    # Concatenate all statistics
+    feature_vector = np.concatenate(stats)
+    
+    return feature_vector  # Shape: (n_features * 7,)
 
 def pad_features(features, max_len=150):
     
     #Pad or truncate to fixed length.
+
+    if features.ndim != 2:
+        raise ValueError(f"Expected 2D array, got {features.ndim}D")
+
+    current_len = features.shape[1]
         
-    if features.shape[1] < max_len:
-        pad_width = max_len - features.shape[1]
+    if current_len < max_len:
+        # Pad with zeros
+        pad_width = max_len - current_len
         features = np.pad(features, ((0, 0), (0, pad_width)), mode='constant')
-    else:
+    elif current_len > max_len:
+        # Truncate
         features = features[:, :max_len]
     
     return features
@@ -123,6 +186,11 @@ def normalize_features(features):
 
     mean = np.mean(features)
     std = np.std(features)
+
+    if std < 1e-8:
+        # Return zero-centered features without dividing by zero
+        return features - mean
+    
     normalized = (features - mean) / (std + 1e-8)
 
     # CLIP extreme values to prevent issues

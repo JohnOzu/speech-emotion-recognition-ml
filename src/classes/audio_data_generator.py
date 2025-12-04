@@ -28,7 +28,7 @@ class AudioDataGenerator(Sequence):
                 feat_path = self.file_paths[idx]
                 
                 if os.path.exists(feat_path):
-                    feat = np.load(feat_path)  # shape: (1, num_features, time_steps)
+                    feat = np.load(feat_path) # shape: (num_features, time_steps)
                     # Add channel dimension: (num_features, time_steps, 1)
                     feat = feat[..., np.newaxis]  # add channel dim
                     X_batch.append(feat)

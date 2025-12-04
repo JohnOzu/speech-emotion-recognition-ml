@@ -10,7 +10,7 @@ TARGET_SR = 16000
 TARGET_DURATION = 3.0
 TARGET_LENGTH = int(TARGET_SR * TARGET_DURATION)
 
-def process_file(filepath, rows):
+def process_file(filepath, rows, save_path=OUTPUT_DIR):
     try:
         audio, sr = librosa.load(filepath, sr=TARGET_SR, mono=True)
 
@@ -35,7 +35,7 @@ def process_file(filepath, rows):
         index = base_parts[3]
 
         out_name = f"{base}_16k.wav"
-        out_path = os.path.join(OUTPUT_DIR, out_name)
+        out_path = os.path.join(save_path, out_name)
 
         sf.write(out_path, audio, TARGET_SR)
 

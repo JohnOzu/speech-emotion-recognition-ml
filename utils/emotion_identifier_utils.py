@@ -5,17 +5,17 @@ def identify_emotion(emotion):
     emotion = emotion.strip().lower()  
 
     match emotion:
-        case "ang" | "05" | "a" | "angry" | "anger":
+        case "ang" | "05" | "a" | "angry" | "anger" | "rab":
             return "angry"
         case "dis" | "07" | "d" | "disgust":
             return "disgust"
-        case "fea" | "06" | "f" | "fear":
+        case "fea" | "06" | "f" | "fear" | "pau":
             return "fear"
-        case "hap" | "03" | "h" | "happy":
+        case "hap" | "03" | "h" | "happy" | "gio":
             return "happy"
         case "neu" | "01" | "n" | "neutral":
             return "neutral"
-        case "sad" | "04" | "sa" | "sad":
+        case "sad" | "04" | "sa" | "sad" | "tri":
             return "sad"
         case "surprised" | "su" | "08":
             return "surprised"
