@@ -10,23 +10,25 @@ from sklearn.metrics import (
 )
 import pandas as pd
 import sys
-from plotnine import *
 
 sys.path.append("..")
 
 import utils
 from utils import extract_mel_spectrogram
+from utils import extract_mfcc_features
+from utils import extract_spectral_features
+from utils import extract_prosodic_features
 from utils import pad_features
 from utils import normalize_features
 
 
-class CNNAudioPredictor:
+class CNNLSTMAudioPredictor:
     """
     A class for predicting audio files using a trained Keras model.
     Uses TensorFlow Dataset API for memory-efficient processing.
     """
     
-    def __init__(self, model_path, class_names, target_shape=(120, 150), sample_rate=16000):
+    def __init__(self, model_path, class_names, target_shape=(261, 150), sample_rate=16000):
         """
         Initialize the AudioPredictor.
         
@@ -58,19 +60,37 @@ class CNNAudioPredictor:
         # Load audio
         audio, sr = librosa.load(file_path, sr=self.sample_rate)
         
-        # Extract mel spectrogram using your custom function
-        mel_spec = extract_mel_spectrogram(audio, sr)  # Returns (128, time_frames)
+        mfccs = extract_mfcc_features(audio, sr) # 120 features
+        mel_spectrogram = extract_mel_spectrogram(audio, sr) # 128 features
+        spectral = extract_spectral_features(audio, sr) # 12 features
+        prosodic = extract_prosodic_features(audio, sr) # 2 features
+        
+        # Align to same time dimension
+        min_len = min(
+            mfccs.shape[1], 
+            prosodic.shape[1], 
+            spectral.shape[1],
+            mel_spectrogram.shape[1]
+        )
+
+        mfccs = mfccs[:, :min_len]
+        mel_spectrogram = mel_spectrogram[:, :min_len]
+        spectral = spectral[:, :min_len]
+        prosodic = prosodic[:, :min_len]
+
+        # Stack all features together
+        features = np.vstack([mfccs, mel_spectrogram, spectral, prosodic])
         
         # Pad to fixed length using your custom function
-        mel_spec = pad_features(mel_spec, max_len=self.target_shape[1]) # (128, 150)
+        features = pad_features(features, max_len=self.target_shape[1]) # (261, 150)
         
         # Normalize using your custom function
-        mel_spec = normalize_features(mel_spec)
+        features = normalize_features(features)
         
         # Add channel dimension
-        mel_spec = mel_spec[..., np.newaxis]  # (128, 150, 1)
+        features = features[..., np.newaxis]  # (261, 150, 1)
         
-        return mel_spec.astype(np.float32)
+        return features.astype(np.float32)
     
     def create_dataset(self, file_paths, batch_size=32):
         """
@@ -253,7 +273,7 @@ class CNNAudioPredictor:
         
         return true_labels
     
-    def evaluate(self, file_paths, true_labels, batch_size=32, average='weighted', plot_cm=False, save_cm_path=None):
+    def evaluate(self, file_paths, true_labels, batch_size=32, average='weighted'):
         """
         Predict and calculate evaluation metrics.
         
@@ -262,8 +282,6 @@ class CNNAudioPredictor:
         - true_labels: List of true labels (same order as file_paths)
         - batch_size: Batch size for processing
         - average: Averaging method for metrics ('weighted', 'macro', 'micro')
-        - plot_cm: Whether to generate and display confusion matrix plot
-        - save_cm_path: Optional path to save confusion matrix plot
         
         Returns:
         - Tuple of (results, metrics_dict)
@@ -275,56 +293,11 @@ class CNNAudioPredictor:
         y_pred = [r['predicted_class'] for r in results]
         
         # Calculate metrics
-        metrics = self.calculate_metrics(true_labels, y_pred, average, plot_cm, save_cm_path)
+        metrics = self.calculate_metrics(true_labels, y_pred, average)
         
         return results, metrics
     
-    def plot_confusion_matrix(self, y_true, y_pred, save_path=None):
-        """
-        Create a visual confusion matrix using plotnine.
-        
-        Parameters:
-        - y_true: List of true labels
-        - y_pred: List of predicted labels
-        - save_path: Optional path to save the plot (e.g., 'confusion_matrix.png')
-        
-        Returns:
-        - plotnine plot object
-        """
-        # Compute confusion matrix
-        labels = sorted(self.class_names)
-        cm = confusion_matrix(y_true, y_pred, labels=labels)
-        
-        # Convert to tidy DataFrame for plotnine
-        df_cm = (
-            pd.DataFrame(cm, index=labels, columns=labels)
-              .reset_index()
-              .melt(id_vars='index')
-        )
-        df_cm.columns = ['True', 'Predicted', 'Count']
-        
-        # Create the plot
-        plot = (
-            ggplot(df_cm, aes('Predicted', 'True', fill='Count'))
-            + geom_tile()
-            + geom_text(aes(label='Count'), color='white', size=10)
-            + scale_fill_gradient(low='#d0e1f9', high='#023e8a')
-            + theme_minimal()
-            + labs(title='Confusion Matrix', x='Predicted label', y='True label')
-        )
-        
-        # Display the plot in the notebook
-        from IPython.display import display
-        display(plot)
-        
-        # Save if path provided
-        if save_path:
-            plot.save(save_path, dpi=300, width=8, height=6)
-            print(f"Confusion matrix plot saved to {save_path}")
-        
-        return plot
-    
-    def calculate_metrics(self, y_true, y_pred, average='weighted', plot_cm=False, save_cm_path=None):
+    def calculate_metrics(self, y_true, y_pred, average='weighted'):
         """
         Calculate and display evaluation metrics.
         
@@ -332,8 +305,6 @@ class CNNAudioPredictor:
         - y_true: List of true labels
         - y_pred: List of predicted labels
         - average: Averaging method for metrics
-        - plot_cm: Whether to generate and display confusion matrix plot
-        - save_cm_path: Optional path to save confusion matrix plot
         
         Returns:
         - Dictionary containing all metrics
@@ -365,24 +336,19 @@ class CNNAudioPredictor:
         print("\nDETAILED CLASSIFICATION REPORT:")
         print(classification_report(y_true, y_pred, target_names=self.class_names, zero_division=0))
         
-        # Generate visual confusion matrix if requested
-        if plot_cm:
-            cm_plot = self.plot_confusion_matrix(y_true, y_pred, save_path=save_cm_path)
-            print("\nConfusion matrix plot generated!")
-        else:
-            # Print text confusion matrix
-            cm = confusion_matrix(y_true, y_pred, labels=self.class_names)
-            print("\nCONFUSION MATRIX:")
-            print("Predicted ->")
-            print(f"{'True ↓':<15}", end="")
-            for name in self.class_names:
-                print(f"{name:<15}", end="")
+        # Print confusion matrix
+        cm = confusion_matrix(y_true, y_pred, labels=self.class_names)
+        print("\nCONFUSION MATRIX:")
+        print("Predicted ->")
+        print(f"{'True ↓':<15}", end="")
+        for name in self.class_names:
+            print(f"{name:<15}", end="")
+        print()
+        for i, name in enumerate(self.class_names):
+            print(f"{name:<15}", end="")
+            for j in range(len(self.class_names)):
+                print(f"{cm[i][j]:<15}", end="")
             print()
-            for i, name in enumerate(self.class_names):
-                print(f"{name:<15}", end="")
-                for j in range(len(self.class_names)):
-                    print(f"{cm[i][j]:<15}", end="")
-                print()
         
         return metrics
     

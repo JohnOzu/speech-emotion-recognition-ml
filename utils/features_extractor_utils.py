@@ -144,7 +144,6 @@ def compute_feature_statistics(features):
         # 1D array of statistical features
     
     stats = []
-    a
     # Compute statistics across time (axis=1)
     stats.append(np.mean(features, axis=1))      # Mean
     stats.append(np.std(features, axis=1))       # Standard deviation

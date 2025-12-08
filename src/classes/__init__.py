@@ -1,3 +1,5 @@
 from .audio_data_generator import AudioDataGenerator
 from .svm_data_generator import SVMDataGenerator
 from .cnn_audio_predictor import CNNAudioPredictor
+from .cnn_lstm_audio_predictor import CNNLSTMAudioPredictor
+from .svm_audio_predictor import SVMAudioPredictor

@@ -12,3 +12,4 @@ from .features_extractor_utils import extract_spectral_features
 from .features_extractor_utils import compute_feature_statistics
 
 from .model_training_utils import cleanup_checkpoints
+from .model_training_utils import plot_training_history
